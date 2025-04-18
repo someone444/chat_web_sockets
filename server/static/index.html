@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Chat</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #eee;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient(135deg, #0f0f0f, #1e1e1e);
+        }
+
+        .chat-container {
+            width: 420px;
+            height: 650px;
+            background-color: #222;
+            border-radius: 15px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+            transition: all 0.4s ease;
+        }
+
+        .chat-header {
+            background-color: #1a1a1a;
+            color: #00b0b0;
+            text-align: center;
+            padding: 20px;
+            font-size: 22px;
+            font-family: 'Roboto', sans-serif;
+            border-radius: 15px 15px 0 0;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.7);
+        }
+
+        #message-container {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background-color: #181818;
+            border-bottom: 1px solid #444;
+            transition: all 0.3s ease;
+            scrollbar-width: thin;
+            scrollbar-color: #00b0b0 #181818;
+        }
+
+        #message-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #message-container::-webkit-scrollbar-thumb {
+            background-color: #00b0b0;
+            border-radius: 10px;
+        }
+
+        #message-container::-webkit-scrollbar-track {
+            background-color: #181818;
+            border-radius: 10px;
+        }
+
+        .message {
+            margin-bottom: 12px;
+            padding: 12px 15px;
+            border-radius: 20px;
+            max-width: 75%;
+            display: inline-block;
+            clear: both;
+            font-size: 15px;
+            word-wrap: break-word;
+            font-family: 'Roboto', sans-serif;
+            transition: transform 0.3s ease;
+        }
+
+        .message.sent {
+            background-color: #00b0b0;
+            color: white;
+            float: right;
+            margin-left: 20px;
+            box-shadow: 0 4px 10px rgba(0, 176, 176, 0.5);
+        }
+
+        .message.received {
+            background-color: #444;
+            color: #ddd;
+            float: left;
+            margin-right: 20px;
+            box-shadow: 0 4px 10px rgba(68, 68, 68, 0.7);
+        }
+
+        .message .sender {
+            font-weight: bold;
+            color: #ffffff;
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+
+        .message .text {
+            display: block;
+            font-size: 14px;
+            color: #eee;
+        }
+
+        #message-input {
+            padding: 15px;
+            border: none;
+            font-size: 16px;
+            width: 100%;
+            box-sizing: border-box;
+            background-color: #1e1e1e;
+            color: #ddd;
+            border-radius: 0 0 15px 15px;
+            outline: none;
+            border-top: 1px solid #444;
+        }
+
+        #name-container {
+            text-align: center;
+            padding: 20px;
+            width: 100%;
+        }
+
+        #name-input {
+            padding: 14px;
+            font-size: 18px;
+            width: 80%;
+            border: 2px solid #444;
+            border-radius: 10px;
+            outline: none;
+            color: #ddd;
+            background-color: #2a2a2a;
+        }
+
+        #name-submit {
+            padding: 14px 24px;
+            background-color: #00b0b0;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            margin-top: 15px;
+            cursor: pointer;
+        }
+
+        #name-submit:hover {
+            background-color: #008080;
+            transform: scale(1.05);
+        }
+
+        #name-container p {
+            color: #aaa;
+            margin-top: 10px;
+            font-size: 16px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Name Entry -->
+    <div id="name-container">
+        <h2>Enter your name to start chatting</h2>
+        <input type="text" id="name-input" placeholder="Enter your name..." />
+        <button id="name-submit">Start Chat</button>
+        <p>Once you enter your name, the chat window will open.</p>
+    </div>
+
+    <!-- Chat Container -->
+    <div class="chat-container" id="chat-container" style="display: none;">
+        <div class="chat-header">
+            WebSocket Chat
+        </div>
+        <div id="message-container"></div>
+        <input type="text" id="message-input" placeholder="Type a message..." />
+    </div>
+
+    <script>
+        let username = "";
+        const socket = new WebSocket("ws://127.0.0.1:8000/ws/chat");
+        const messageContainer = document.getElementById("message-container");
+        const nameContainer = document.getElementById("name-container");
+        const chatContainer = document.getElementById("chat-container");
+
+        socket.onopen = function() {
+            console.log("WebSocket connected");
+        };
+
+        socket.onerror = function(event) {
+            console.error("WebSocket error:", event);
+        };
+
+        socket.onclose = function(event) {
+            console.warn("WebSocket closed:", event);
+        };
+
+        socket.onmessage = (event) => {
+            const data = event.data;
+
+            const newMessage = document.createElement("div");
+            newMessage.classList.add("message");
+
+            let sender = "Server";
+            let text = data;
+
+            // Whisper support
+            const isWhisper = data.startsWith("[whisper]");
+            if (isWhisper) {
+                const whisperParts = data.replace("[whisper] ", "").split(":");
+                sender = whisperParts[0];
+                text = whisperParts.slice(1).join(":");
+                newMessage.style.backgroundColor = "#666";
+                newMessage.style.color = "#fff";
+            } else {
+                const parts = data.split(':');
+                if (parts.length > 1) {
+                    sender = parts[0];
+                    text = parts.slice(1).join(':');
+                }
+            }
+
+            const senderElement = document.createElement("div");
+            senderElement.classList.add("sender");
+            senderElement.textContent = sender;
+
+            const textElement = document.createElement("div");
+            textElement.classList.add("text");
+            textElement.textContent = text;
+
+            newMessage.appendChild(senderElement);
+            newMessage.appendChild(textElement);
+
+            newMessage.classList.add(sender === username ? "sent" : "received");
+
+            messageContainer.appendChild(newMessage);
+            messageContainer.scrollTop = messageContainer.scrollHeight;
+        };
+
+        // Send message when 'Enter' key is pressed
+        document.getElementById("message-input").addEventListener("keydown", function(e) {
+            if (e.key === "Enter") {
+                const message = e.target.value.trim();
+                if (message) {
+                    if (message.startsWith("[whisper]")) {
+                        const targetUsername = message.split(" ")[0].replace("[whisper]", "").trim();
+                        const whisperMessage = message.slice(targetUsername.length + 10).trim();
+                        if (whisperMessage) {
+                            socket.send(`[whisper] ${targetUsername}:${whisperMessage}`);
+                            const newMessage = document.createElement("div");
+                            newMessage.classList.add("message", "sent");
+                            newMessage.innerHTML = `<div class="sender">${username}</div><div class="text">${whisperMessage}</div>`;
+                            newMessage.style.backgroundColor = "#666"; // Optional styling for whispers
+                            newMessage.style.color = "#fff"; // Optional styling for whispers
+                            messageContainer.appendChild(newMessage);
+                            messageContainer.scrollTop = messageContainer.scrollHeight;
+                        }
+                    } else {
+                        socket.send(`${username}: ${message}`);
+                        const newMessage = document.createElement("div");
+                        newMessage.classList.add("message", "sent");
+                        newMessage.innerHTML = `<div class="sender">${username}</div><div class="text">${message}</div>`;
+                        messageContainer.appendChild(newMessage);
+                        messageContainer.scrollTop = messageContainer.scrollHeight;
+                    }
+                }
+                e.target.value = "";
+            }
+        });
+
+        // Name Submission
+        document.getElementById("name-submit").addEventListener("click", function() {
+            username = document.getElementById("name-input").value.trim();
+            if (username) {
+                socket.send(`User ${username} has joined the chat.`);
+                nameContainer.style.display = "none";
+                chatContainer.style.display = "flex";
+            }
+        });
+
+    </script>
+</body>
+</html>
