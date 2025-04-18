@@ -1,4 +1,4 @@
-# Simple WebSocket Chat App
+# Ripple: Simple WebSocket Chat App
 
 This is a basic real-time chat app using FastAPI and WebSockets.  
 Users can join with a name, send public and private messages, and see who’s typing.
